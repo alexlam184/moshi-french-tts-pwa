@@ -123,8 +123,26 @@ export async function uninstallModel(id: string) {
   await db.delete(STORE, id)
 }
 
-export function estimateStorage() {
-  return navigator.storage?.estimate?.() ?? Promise.resolve({ usage: 0, quota: 0 })
+export async function modelStorageUsage() {
+  let usage = 0
+
+  try {
+    const root = await navigator.storage.getDirectory()
+    const directory = await root.getDirectoryHandle('piper')
+    const entries = (directory as FileSystemDirectoryHandle & { values(): AsyncIterableIterator<FileSystemHandle> }).values()
+    for await (const handle of entries) {
+      if (handle.kind === 'file') usage += (await (handle as FileSystemFileHandle).getFile()).size
+    }
+  } catch { /* Piper has no stored files */ }
+
+  if ((await caches.keys()).includes(SUPERTONIC_CACHE)) {
+    const cache = await caches.open(SUPERTONIC_CACHE)
+    for (const [path, expectedSize] of SUPERTONIC_ASSETS) {
+      if (await cache.match(`${SUPERTONIC_BASE_URL}/${path}`)) usage += expectedSize
+    }
+  }
+
+  return usage
 }
 
 export const MODEL_CATALOG: ModelDefinition[] = [

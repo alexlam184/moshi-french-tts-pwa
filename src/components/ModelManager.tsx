@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
-import { estimateStorage, installedModels, installModel, MODEL_CATALOG, uninstallModel, type ModelDefinition } from '../services/models'
+import { installedModels, installModel, MODEL_CATALOG, modelStorageUsage, uninstallModel, type ModelDefinition } from '../services/models'
 import { Icon } from './Icons'
 
 export function ModelManager({ open, onClose, onInstalledChange }: { open: boolean; onClose: () => void; onInstalledChange: (ids: string[]) => void }) {
   const [models, setModels] = useState<ModelDefinition[]>(MODEL_CATALOG)
-  const [storage, setStorage] = useState({ usage: 0, quota: 0 })
+  const [storage, setStorage] = useState(0)
   const [installErrors, setInstallErrors] = useState<Record<string, string>>({})
 
-  const refreshStorage = () => estimateStorage().then(s => setStorage({ usage: s.usage ?? 0, quota: s.quota ?? 0 }))
-  useEffect(() => { installedModels().then(ids => { setModels(m => m.map(x => ids.includes(x.id) ? { ...x, state: 'installed' } : x)); onInstalledChange(ids) }); refreshStorage() }, [onInstalledChange])
+  const refreshStorage = () => modelStorageUsage().then(setStorage)
+  useEffect(() => { installedModels().then(ids => { setModels(m => m.map(x => ids.includes(x.id) ? { ...x, state: 'installed' } : x)); onInstalledChange(ids) }); void refreshStorage() }, [onInstalledChange])
   useEffect(() => { const dialog = document.getElementById('models-dialog') as HTMLDialogElement | null; if (open && dialog && !dialog.open) dialog.showModal(); if (!open && dialog?.open) dialog.close() }, [open])
 
   async function install(model: ModelDefinition) {
@@ -23,11 +23,18 @@ export function ModelManager({ open, onClose, onInstalledChange }: { open: boole
       const reason = error instanceof Error ? error.message : 'The download could not finish. Check your connection and browser storage, then retry.'
       setInstallErrors(errors => ({ ...errors, [model.id]: reason }))
       setModels(items => items.map(x => x.id === model.id ? { ...x, state: 'error', progress: 0 } : x))
+      await refreshStorage()
     }
   }
 
-  async function remove(id: string) { await uninstallModel(id); setModels(items => items.map(x => x.id === id ? { ...x, state: 'available', progress: 0 } : x)); onInstalledChange(await installedModels()); refreshStorage() }
-  const mb = (storage.usage / 1024 / 1024).toFixed(1)
+  async function remove(id: string) {
+    await uninstallModel(id)
+    setInstallErrors(errors => ({ ...errors, [id]: '' }))
+    setModels(items => items.map(x => x.id === id ? { ...x, state: 'available', progress: 0 } : x))
+    onInstalledChange(await installedModels())
+    await refreshStorage()
+  }
+  const mb = (storage / 1_000_000).toFixed(1)
 
   return <dialog id="models-dialog" className="dialog" onClose={onClose} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
     <div className="dialog__body">
@@ -39,7 +46,7 @@ export function ModelManager({ open, onClose, onInstalledChange }: { open: boole
           {model.state === 'installing' ? <div className="model__progress"><span>{Math.round(model.progress)}%</span><progress value={model.progress} max="100" /></div> : model.state === 'installed' ? <button className="button button--quiet button--danger" onClick={() => remove(model.id)}><Icon name="trash"/> uninstall</button> : <button className="button button--quiet" data-state={model.state} onClick={() => install(model)}><Icon name="download"/> {model.state === 'error' ? 'retry' : 'install'}</button>}
         </article>)}
       </div>
-      <footer className="storage"><span>browser storage used</span><strong>{mb} MB</strong></footer>
+      <footer className="storage"><span>model storage used</span><strong>{mb} MB</strong></footer>
     </div>
   </dialog>
 }
