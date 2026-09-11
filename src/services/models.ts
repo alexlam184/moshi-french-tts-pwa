@@ -83,14 +83,15 @@ export async function installModel(id: Exclude<EngineId, 'system'>, onProgress: 
       if (existing) { completed += expectedSize; onProgress((completed / total) * 100); continue }
       const response = await fetch(url)
       if (!response.ok) throw new Error(`Could not download ${path} (${response.status})`)
+      const cachedResponse = response.clone()
       const reader = response.body?.getReader()
       if (!reader) {
-        await cache.put(url, response)
+        await cache.put(url, cachedResponse)
         completed += expectedSize
       } else {
         // Cache the cloned stream while reading the original stream for progress.
         // This avoids holding the 256 MB vector model in JavaScript memory.
-        const cacheWrite = cache.put(url, response.clone())
+        const cacheWrite = cache.put(url, cachedResponse)
         let received = 0
         while (true) {
           const { done, value } = await reader.read()
