@@ -13,9 +13,23 @@ type StatusKind = 'ready' | 'empty' | 'restored' | 'cards' | 'preparing' | 'sent
 type AppStatus = { kind: StatusKind; title: string; detail?: string; error?: boolean }
 const EMPTY_PLAYBACK: Playback = { sentence: null, word: -1, paused: false, hovering: null }
 const SAVED_TEXT_KEY = 'moshi-french-tts-pwa-last-text'
+const RECENT_TEXTS_KEY = 'moshi-french-tts-pwa-recent-texts'
+const RECENT_TEXT_LIMIT = 20
 
 function savedText() {
   return window.localStorage.getItem(SAVED_TEXT_KEY)?.trim() || SAMPLE_TEXT
+}
+
+function savedRecentTexts() {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(RECENT_TEXTS_KEY) ?? '[]')
+    if (Array.isArray(stored)) {
+      const texts = stored.filter((item): item is string => typeof item === 'string' && Boolean(item.trim()))
+      if (texts.length) return [...new Set(texts.map(item => item.trim()))].slice(0, RECENT_TEXT_LIMIT)
+    }
+  } catch { /* Ignore invalid history left by an older app version. */ }
+  const lastText = window.localStorage.getItem(SAVED_TEXT_KEY)?.trim()
+  return lastText ? [lastText] : []
 }
 
 function readyStatus(): AppStatus {
@@ -25,6 +39,7 @@ function readyStatus(): AppStatus {
 export default function App() {
   const [draft, setDraft] = useState(savedText)
   const [text, setText] = useState(savedText)
+  const [recentTexts, setRecentTexts] = useState(savedRecentTexts)
   const sentences = useMemo(() => splitIntoSentences(text), [text])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [engine, setEngine] = useState<EngineId>('system')
@@ -34,6 +49,7 @@ export default function App() {
   const [rate, setRate] = useState(0.85)
   const [playback, setPlayback] = useState<Playback>(EMPTY_PLAYBACK)
   const [modelsOpen, setModelsOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [page, setPage] = useState<'practice' | 'guide'>('practice')
   const [status, setStatus] = useState<AppStatus>(() => window.localStorage.getItem(SAVED_TEXT_KEY)
     ? { kind: 'restored', title: 'Text restored', detail: 'Your last prepared text was returned to the editor.' }
@@ -53,6 +69,14 @@ export default function App() {
   }, [])
 
   useEffect(() => { installedModels().then(setInstalled) }, [])
+  useEffect(() => {
+    const dialog = document.getElementById('history-dialog') as HTMLDialogElement | null
+    if (historyOpen && dialog && !dialog.open) {
+      dialog.showModal()
+      window.requestAnimationFrame(() => dialog.querySelector<HTMLButtonElement>('.history-list button')?.focus())
+    }
+    if (!historyOpen && dialog?.open) dialog.close()
+  }, [historyOpen])
   useEffect(() => {
     const next = voicesForEngine(engine, voices)
     setVoice(next[0]?.id ?? '')
@@ -83,7 +107,22 @@ export default function App() {
     const different = new Set(prepared.map(sentence => sentence.text.toLocaleLowerCase('fr'))).size
     setText(clean)
     window.localStorage.setItem(SAVED_TEXT_KEY, clean)
+    setRecentTexts(current => {
+      const next = [clean, ...current.filter(item => item !== clean)].slice(0, RECENT_TEXT_LIMIT)
+      window.localStorage.setItem(RECENT_TEXTS_KEY, JSON.stringify(next))
+      return next
+    })
     setStatus({ kind: 'cards', title: 'Sentence cards ready', detail: `${prepared.length} total · ${different} different.` })
+  }
+
+  function restoreRecentText(value: string) {
+    playlist.current = false
+    stopEngines()
+    setPlayback(EMPTY_PLAYBACK)
+    setDraft(value)
+    setHistoryOpen(false)
+    setStatus({ kind: 'restored', title: 'Text restored', detail: 'A recent text was returned to the editor. Select prepare listening when ready.' })
+    window.requestAnimationFrame(() => document.getElementById('french-text')?.focus())
   }
 
   function stopEngines() {
@@ -250,6 +289,7 @@ export default function App() {
       <a className="wordmark" href="#workspace" onClick={() => setPage('practice')} aria-label="moshi-french-tts-pwa home"><span className="wordmark__wave" aria-hidden="true">〰</span>moshi-french-tts-pwa</a>
       <nav className="nav-actions" aria-label="App navigation">
         <button className="button button--quiet" aria-current={page === 'guide' ? 'page' : undefined} onClick={openGuide}>guide</button>
+        <button className="button button--quiet" onClick={() => setHistoryOpen(true)}>history</button>
         <button className="button button--quiet" onClick={() => setModelsOpen(true)}><Icon name="settings"/> voice models</button>
       </nav>
     </header>
@@ -295,6 +335,18 @@ export default function App() {
     </main>}
 
     <footer className="foot-line"><p>moshi-french-tts-pwa · private listening practice</p><span>made by Alex Lam · works offline after first visit</span></footer>
+    <dialog id="history-dialog" className="dialog history-dialog" onClose={() => setHistoryOpen(false)} onClick={event => { if (event.target === event.currentTarget) setHistoryOpen(false) }}>
+      <div className="dialog__body history-dialog__body">
+        <header className="dialog__header"><div><p className="eyebrow">RECENT TEXT</p><h2>listening history</h2></div><button className="icon-button" onClick={() => setHistoryOpen(false)} aria-label="Close recent text">×</button></header>
+        <p className="dialog__lede">your latest 20 prepared passages stay in this browser. select one to return it to the editor.</p>
+        <div className="history-count"><span>saved passages</span><strong>{recentTexts.length} / {RECENT_TEXT_LIMIT}</strong></div>
+        {recentTexts.length ? <div className="history-list">
+          {recentTexts.map((item, index) => <button key={item} type="button" onClick={() => restoreRecentText(item)} aria-label={`Restore recent text ${index + 1}: ${item}`}>
+            <span>{item}</span><small>restore</small>
+          </button>)}
+        </div> : <div className="history-empty"><Icon name="speaker"/><p>No recent text yet.</p><span>Prepare a French passage and it will appear here.</span></div>}
+      </div>
+    </dialog>
     <ModelManager open={modelsOpen} onClose={() => setModelsOpen(false)} onInstalledChange={updateInstalled} />
   </div>
 }
