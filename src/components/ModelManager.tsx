@@ -40,6 +40,10 @@ export function ModelManager({ open, onClose, onInstalledChange }: { open: boole
     <div className="dialog__body">
       <header className="dialog__header"><div><p className="eyebrow">MODEL STORAGE</p><h2>offline voices</h2></div><button className="icon-button" onClick={onClose} aria-label="Close model manager">×</button></header>
       <p className="dialog__lede">model packages stay in this browser. install a voice once, then use it locally for private, offline playback.</p>
+      <aside className="model-note" aria-label="iPad and iPhone compatibility note">
+        <strong>iPad &amp; iPhone note</strong>
+        <p>Supertonic HD needs about 401 MB, plus temporary working space. Safari may reject its download or stop playback when browser storage or memory is limited. Piper is recommended for reliable mobile use; Supertonic HD works best on desktop.</p>
+      </aside>
       <div className="model-list">
         {models.map(model => <article className="model" key={model.id}>
           <div className="model__copy"><strong>{model.name}</strong><span>{model.detail}</span><small>{model.size} MB package</small>{installErrors[model.id] && <small className="model__error" role="alert">{installErrors[model.id]}</small>}</div>
