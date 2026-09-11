@@ -136,6 +136,7 @@ select:disabled { opacity: .55; cursor: not-allowed; }
 .model__copy { display: grid; gap: var(--space-2xs); }
 .model__copy strong { color: var(--color-ink); }
 .model__copy span, .model__copy small { color: var(--color-muted); }
+.model__copy .model__error { color: var(--color-error); line-height: 1.45; }
 .model__progress { min-width: 140px; display: grid; gap: var(--space-xs); color: var(--color-muted); font: var(--text-xs) var(--font-label); }
 progress { width: 100%; accent-color: var(--color-accent); }
 .storage { display: flex; justify-content: space-between; gap: var(--space-md); color: var(--color-muted); font-size: var(--text-sm); }
