@@ -1,6 +1,9 @@
 import { TtsSession } from '@mintplex-labs/piper-tts-web'
 import { loadTextToSpeech, loadVoiceStyle, writeWavFile, type SupertonicStyle, type SupertonicTts } from './supertonic/vendor-helper.js'
 import { SUPERTONIC_BASE_URL } from './models'
+import { MemoryAudioCache } from './audioCache'
+
+const sessionAudioCache = new MemoryAudioCache()
 
 export type SpeechEvents = {
   onWord?: (index: number) => void
@@ -107,6 +110,11 @@ class AudioPlayback {
 export class PiperSpeechEngine {
   private playback = new AudioPlayback()
   private session: Promise<TtsSession> | null = null
+  private cache = sessionAudioCache
+
+  private cacheKey(words: string[], rate: number) {
+    return JSON.stringify(['piper', 'fr_FR-siwis-medium', rate, words.join(' ')])
+  }
 
   private load() {
     if (!this.session) {
@@ -129,12 +137,22 @@ export class PiperSpeechEngine {
     const generation = this.playback.nextGeneration()
     this.playback.unlock()
     try {
+      const key = this.cacheKey(words, options.rate)
+      const cached = this.cache.get(key)
+      if (cached) {
+        await this.playback.play(cached, words.length, options.rate, events)
+        return
+      }
       const session = await this.load()
       const wav = await session.predict(words.join(' '))
       if (!this.playback.isCurrent(generation)) return
+      this.cache.set(key, wav)
       await this.playback.play(wav, words.length, options.rate, events)
     } catch (error) { if (this.playback.isCurrent(generation)) events.onError?.(error) }
   }
+
+  hasCached(words: string[], options: { rate: number }) { return this.cache.has(this.cacheKey(words, options.rate)) }
+  clearCache() { this.cache.clear() }
 
   pause() { this.playback.pause() }
   resume() { this.playback.resume() }
@@ -146,6 +164,11 @@ export class SupertonicSpeechEngine {
   private tts: SupertonicTts | null = null
   private loadPromise: Promise<SupertonicTts> | null = null
   private styles = new Map<string, SupertonicStyle>()
+  private cache = sessionAudioCache
+
+  private cacheKey(words: string[], rate: number, voice: string) {
+    return JSON.stringify(['supertonic', voice, rate, words.join(' ')])
+  }
 
   private load() {
     if (this.tts) return Promise.resolve(this.tts)
@@ -170,14 +193,26 @@ export class SupertonicSpeechEngine {
     const generation = this.playback.nextGeneration()
     this.playback.unlock()
     try {
-      const [tts, style] = await Promise.all([this.load(), this.style(options.voice ?? 'F1')])
+      const selectedVoice = options.voice ?? 'F1'
+      const key = this.cacheKey(words, options.rate, selectedVoice)
+      const cached = this.cache.get(key)
+      if (cached) {
+        await this.playback.play(cached, words.length, 1, events)
+        return
+      }
+      const [tts, style] = await Promise.all([this.load(), this.style(selectedVoice)])
       const result = await tts.call(words.join(' '), 'fr', style, 8, options.rate, 0.15)
       if (!this.playback.isCurrent(generation)) return
       const length = Math.floor(tts.sampleRate * result.duration[0])
       const wav = writeWavFile(result.wav.slice(0, length), tts.sampleRate)
-      await this.playback.play(new Blob([wav], { type: 'audio/wav' }), words.length, 1, events)
+      const audio = new Blob([wav], { type: 'audio/wav' })
+      this.cache.set(key, audio)
+      await this.playback.play(audio, words.length, 1, events)
     } catch (error) { if (this.playback.isCurrent(generation)) events.onError?.(error) }
   }
+
+  hasCached(words: string[], options: { rate: number; voice?: string }) { return this.cache.has(this.cacheKey(words, options.rate, options.voice ?? 'F1')) }
+  clearCache() { this.cache.clear() }
 
   pause() { this.playback.pause() }
   resume() { this.playback.resume() }

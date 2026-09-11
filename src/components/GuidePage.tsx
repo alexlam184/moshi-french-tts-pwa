@@ -5,7 +5,7 @@ export function GuidePage({ onBack }: { onBack: () => void }) {
       <h1 id="guide-title">listen, repeat,<br/><em>make it yours.</em></h1>
       <p>Everything happens in this browser. Start with the system voice, then install a local model when you want a different sound.</p>
       <small className="guide-credit">made by Alex Lam</small>
-      <button className="button button--primary" onClick={onBack}>start listening</button>
+      <button className="button button--primary" onClick={onBack}>Start listening</button>
     </header>
 
     <section className="guide-section" aria-labelledby="guide-start">
