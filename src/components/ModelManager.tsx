@@ -47,7 +47,7 @@ export function ModelManager({ open, onClose, onInstalledChange }: { open: boole
       <div className="model-list">
         {models.map(model => <article className="model" key={model.id}>
           <div className="model__copy"><strong>{model.name}</strong><span>{model.detail}</span><small>{model.size} MB package</small>{installErrors[model.id] && <small className="model__error" role="alert">{installErrors[model.id]}</small>}</div>
-          {model.state === 'installing' ? <div className="model__progress"><span>{Math.round(model.progress)}%</span><progress value={model.progress} max="100" /></div> : model.state === 'installed' ? <button className="button button--quiet button--danger" onClick={() => remove(model.id)}><Icon name="trash"/> uninstall</button> : <button className="button button--quiet" data-state={model.state} onClick={() => install(model)}><Icon name="download"/> {model.state === 'error' ? 'retry' : 'install'}</button>}
+          {model.state === 'installing' ? <div className="model__progress"><span>{Math.round(model.progress)}%</span><progress value={model.progress} max="100" /></div> : model.state === 'installed' ? <button className="button button--quiet button--danger" onClick={() => remove(model.id)}><Icon name="trash"/> Uninstall</button> : <button className="button button--quiet" data-state={model.state} onClick={() => install(model)}><Icon name="download"/> {model.state === 'error' ? 'Retry' : 'Install'}</button>}
         </article>)}
       </div>
       <footer className="storage"><span>model storage used</span><strong>{mb} MB</strong></footer>
