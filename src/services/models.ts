@@ -33,6 +33,16 @@ async function database() {
   return openDB(DB_NAME, 1, { upgrade(db) { db.createObjectStore(STORE) } })
 }
 
+async function ensureSupertonicStorage(requiredBytes: number) {
+  try { await navigator.storage?.persist?.() } catch { /* persistent storage is best-effort */ }
+  const estimate = await navigator.storage?.estimate?.()
+  const available = (estimate?.quota ?? 0) - (estimate?.usage ?? 0)
+  if (estimate?.quota && available < requiredBytes) {
+    const availableMb = Math.floor(available / 1024 / 1024)
+    throw new Error(`Supertonic HD needs about 401 MB of free browser storage. Only ${availableMb} MB is available. Free some space, then retry.`)
+  }
+}
+
 export async function installedModels(): Promise<string[]> {
   const db = await database()
   const keys = (await db.getAllKeys(STORE)).map(String)
@@ -65,6 +75,7 @@ export async function installModel(id: Exclude<EngineId, 'system'>, onProgress: 
   } else {
     const cache = await caches.open(SUPERTONIC_CACHE)
     const total = SUPERTONIC_ASSETS.reduce((sum, [, size]) => sum + size, 0)
+    await ensureSupertonicStorage(total)
     let completed = 0
     for (const [path, expectedSize] of SUPERTONIC_ASSETS) {
       const url = `${SUPERTONIC_BASE_URL}/${path}`
@@ -74,20 +85,25 @@ export async function installModel(id: Exclude<EngineId, 'system'>, onProgress: 
       if (!response.ok) throw new Error(`Could not download ${path} (${response.status})`)
       const reader = response.body?.getReader()
       if (!reader) {
-        const data = await response.arrayBuffer()
-        await cache.put(url, new Response(data, { headers: response.headers }))
+        await cache.put(url, response)
         completed += expectedSize
       } else {
-        const chunks: Uint8Array[] = []
+        // Cache the cloned stream while reading the original stream for progress.
+        // This avoids holding the 256 MB vector model in JavaScript memory.
+        const cacheWrite = cache.put(url, response.clone())
         let received = 0
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
-          chunks.push(value); received += value.byteLength
+          received += value.byteLength
           onProgress(((completed + Math.min(received, expectedSize)) / total) * 100)
         }
-        const data = new Blob(chunks as BlobPart[])
-        await cache.put(url, new Response(data, { headers: response.headers }))
+        try {
+          await cacheWrite
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : 'browser storage rejected the file'
+          throw new Error(`Could not save ${path}: ${reason}`)
+        }
         completed += expectedSize
       }
     }
