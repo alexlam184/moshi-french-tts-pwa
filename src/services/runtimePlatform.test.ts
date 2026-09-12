@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isAppleTouchDevice } from './runtimePlatform'
+import { isAppleTouchDevice, isSafariBrowser } from './runtimePlatform'
 
 describe('Apple touch device detection', () => {
   it('recognizes iPad and iPhone user agents', () => {
@@ -14,5 +14,15 @@ describe('Apple touch device detection', () => {
 
   it('keeps other devices on the existing runtime', () => {
     expect(isAppleTouchDevice('Mozilla/5.0 (Windows NT 10.0)', 'Win32', 10)).toBe(false)
+  })
+})
+
+describe('Safari runtime detection', () => {
+  it('uses standard WASM for Mac Safari', () => {
+    expect(isSafariBrowser('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15')).toBe(true)
+  })
+
+  it('keeps WebGPU available to desktop Chrome', () => {
+    expect(isSafariBrowser('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36')).toBe(false)
   })
 })
