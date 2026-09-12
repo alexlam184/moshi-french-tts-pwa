@@ -1,13 +1,13 @@
 import { useStandardWasmRuntime } from '../runtimePlatform';
 
-// Safari on Apple touch devices has a known JSEP/WebGPU runtime memory issue.
+// Safari has a known JSEP/WebGPU runtime memory issue on Apple devices.
 // Import the standard WASM build there, not the WebGPU build with a WASM EP.
 const ort = useStandardWasmRuntime()
     ? await import('onnxruntime-web')
     : await import('onnxruntime-web/webgpu');
 
 // A custom wasmPaths prefix makes ONNX Runtime dynamically import a separate
-// .mjs module. On iPad Safari that import can fail even when Vercel serves the
+// .mjs module. On Safari that import can fail even when Vercel serves the
 // file correctly. The standard WASM bundle embeds its module and Vite emits
 // its matching .wasm asset into the PWA precache. Piper may have set this
 // shared option earlier, so reset it immediately before each Supertonic load.
