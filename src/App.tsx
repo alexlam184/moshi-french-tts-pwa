@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SAMPLE_TEXT, splitIntoSentences } from './core/text'
+import { isIPad } from './core/platform'
 import { SentenceRow } from './components/SentenceRow'
 import { GuidePage } from './components/GuidePage'
 import { ModelManager } from './components/ModelManager'
@@ -315,6 +316,7 @@ export default function App() {
   }
 
   const activeSentence = playback.sentence === null ? null : sentences[playback.sentence]
+  const showSilentModeHint = engine !== 'system' && isIPad(navigator.userAgent, navigator.platform, navigator.maxTouchPoints)
   const textLocked = playback.sentence !== null || status.kind === 'preparing' || status.kind === 'word'
   const isSentenceCached = (index: number) => {
     const words = sentences[index]?.words
@@ -376,7 +378,7 @@ export default function App() {
 
         <div className={`playback-status playback-status--${status.kind}${status.error ? ' playback-status--error' : ''}`} role="status" aria-live="polite" aria-atomic="true">
           <span className="playback-status__light" aria-hidden="true" />
-          <div><strong>{status.title}</strong>{status.detail && <span>{status.detail}</span>}</div>
+          <div><strong>{status.title}</strong>{status.detail && <span>{status.detail}</span>}{showSilentModeHint && <span className="silent-mode-hint">No sound? Turn off Silent Mode in iPad Control Center.</span>}</div>
         </div>
 
         <div className="sentences">
