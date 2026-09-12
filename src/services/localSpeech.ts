@@ -1,8 +1,7 @@
 import { TtsSession } from '@mintplex-labs/piper-tts-web'
-import { loadTextToSpeech, loadVoiceStyle, writeWavFile, type SupertonicStyle, type SupertonicTts } from './supertonic/vendor-helper.js'
+import { loadTextToSpeech, loadVoiceStyle, standardWasmRuntime, writeWavFile, type SupertonicStyle, type SupertonicTts } from './supertonic/vendor-helper.js'
 import { SUPERTONIC_BASE_URL } from './models'
 import { MemoryAudioCache } from './audioCache'
-import { useStandardWasmRuntime } from './runtimePlatform'
 
 const sessionAudioCache = new MemoryAudioCache()
 
@@ -175,7 +174,7 @@ export class SupertonicSpeechEngine {
     if (this.tts) return Promise.resolve(this.tts)
     if (!this.loadPromise) {
       this.loadPromise = loadTextToSpeech(`${SUPERTONIC_BASE_URL}/onnx`, {
-        executionProviders: !useStandardWasmRuntime() && navigator.gpu ? ['webgpu', 'wasm'] : ['wasm'],
+        executionProviders: !standardWasmRuntime && navigator.gpu ? ['webgpu', 'wasm'] : ['wasm'],
         graphOptimizationLevel: 'all',
       }).then(result => (this.tts = result.textToSpeech)).catch(error => {
         this.loadPromise = null
