@@ -1,4 +1,10 @@
-import * as ort from 'onnxruntime-web/webgpu';
+import { useStandardWasmRuntime } from '../runtimePlatform';
+
+// Safari on Apple touch devices has a known JSEP/WebGPU runtime memory issue.
+// Import the standard WASM build there, not the WebGPU build with a WASM EP.
+const ort = useStandardWasmRuntime()
+    ? await import('onnxruntime-web')
+    : await import('onnxruntime-web/webgpu');
 
 // Piper and Supertonic share ONNX Runtime's global environment. Keep both
 // runtimes on the PWA's versioned, offline-cached assets instead of allowing a
@@ -466,20 +472,24 @@ export async function loadTextToSpeech(onnxDir, sessionOptions = {}, progressCal
     ];
     
     const sessions = [];
-    for (let i = 0; i < modelPaths.length; i++) {
-        if (progressCallback) {
-            progressCallback(modelPaths[i].name, i + 1, modelPaths.length);
+    try {
+        for (let i = 0; i < modelPaths.length; i++) {
+            if (progressCallback) {
+                progressCallback(modelPaths[i].name, i + 1, modelPaths.length);
+            }
+            const session = await loadOnnx(modelPaths[i].path, sessionOptions);
+            sessions.push(session);
         }
-        const session = await loadOnnx(modelPaths[i].path, sessionOptions);
-        sessions.push(session);
+
+        const [dpOrt, textEncOrt, vectorEstOrt, vocoderOrt] = sessions;
+        const textProcessor = await loadTextProcessor(onnxDir);
+        const textToSpeech = new TextToSpeech(cfgs, textProcessor, dpOrt, textEncOrt, vectorEstOrt, vocoderOrt);
+
+        return { textToSpeech, cfgs };
+    } catch (error) {
+        await Promise.allSettled(sessions.map(session => session.release()));
+        throw error;
     }
-    
-    const [dpOrt, textEncOrt, vectorEstOrt, vocoderOrt] = sessions;
-    
-    const textProcessor = await loadTextProcessor(onnxDir);
-    const textToSpeech = new TextToSpeech(cfgs, textProcessor, dpOrt, textEncOrt, vectorEstOrt, vocoderOrt);
-    
-    return { textToSpeech, cfgs };
 }
 
 /**
