@@ -1,7 +1,7 @@
 import { detectStandardWasmRuntime } from '../runtimePlatform';
 
-// Use the standard WASM build in Safari and Brave, including Mac standalone
-// apps where Brave may hide its browser identity.
+// Use the standard WASM build in Safari, Brave, and Mac Chrome, including
+// standalone apps where the browser may hide its identity.
 const standalone = typeof matchMedia === 'function' && matchMedia('(display-mode: standalone)').matches;
 export const standardWasmRuntime = await detectStandardWasmRuntime(navigator, standalone);
 const ort = standardWasmRuntime

@@ -20,13 +20,15 @@ export async function detectStandardWasmRuntime(browser: BrowserIdentity, standa
   if (isAppleTouchDevice(browser.userAgent, browser.platform, browser.maxTouchPoints)
     || isSafariBrowser(browser.userAgent)) return true
 
+  const isMac = /Macintosh/i.test(browser.userAgent) || browser.platform === 'MacIntel'
+  if (isMac && /Chrome\/\d/i.test(browser.userAgent) && !/Edg\/|OPR\//i.test(browser.userAgent)) return true
+
   if (browser.userAgentData?.brands?.some(item => item.brand === 'Brave')) return true
 
   try {
     if (await browser.brave?.isBrave?.()) return true
   } catch { /* Brave detection can be unavailable in an installed app */ }
 
-  // Brave's desktop user agent resembles Chrome. A Mac standalone app is a
-  // conservative fallback if Brave does not expose its detection API there.
-  return standalone && (/Macintosh/i.test(browser.userAgent) || browser.platform === 'MacIntel')
+  // A Mac standalone app is a conservative fallback when browser identity is hidden.
+  return standalone && isMac
 }

@@ -22,7 +22,7 @@ describe('Safari runtime detection', () => {
     expect(isSafariBrowser('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15')).toBe(true)
   })
 
-  it('keeps WebGPU available to desktop Chrome', () => {
+  it('does not classify Chrome as Safari', () => {
     expect(isSafariBrowser('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36')).toBe(false)
   })
 })
@@ -33,13 +33,18 @@ describe('Brave runtime detection', () => {
     platform: 'MacIntel',
     maxTouchPoints: 0,
   }
+  const windowsChromeIdentity = {
+    ...macChromeIdentity,
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
+    platform: 'Win32',
+  }
 
   it('uses standard WASM for Brave even when its user agent says Chrome', async () => {
-    expect(await detectStandardWasmRuntime({ ...macChromeIdentity, brave: { isBrave: async () => true } }, false)).toBe(true)
+    expect(await detectStandardWasmRuntime({ ...windowsChromeIdentity, brave: { isBrave: async () => true } }, false)).toBe(true)
   })
 
   it('recognizes Brave client hints when its JavaScript API is hidden', async () => {
-    expect(await detectStandardWasmRuntime({ ...macChromeIdentity, userAgentData: { brands: [{ brand: 'Brave' }] } }, false)).toBe(true)
+    expect(await detectStandardWasmRuntime({ ...windowsChromeIdentity, userAgentData: { brands: [{ brand: 'Brave' }] } }, false)).toBe(true)
   })
 
   it('uses standard WASM for a Mac standalone app if Brave detection is hidden', async () => {
@@ -50,7 +55,11 @@ describe('Brave runtime detection', () => {
     expect(await detectStandardWasmRuntime({ ...macChromeIdentity, brave: { isBrave: async () => { throw new Error('blocked') } } }, true)).toBe(true)
   })
 
-  it('keeps WebGPU available in an ordinary desktop Chrome tab', async () => {
-    expect(await detectStandardWasmRuntime(macChromeIdentity, false)).toBe(false)
+  it('uses standard WASM in an ordinary Mac Chrome tab', async () => {
+    expect(await detectStandardWasmRuntime(macChromeIdentity, false)).toBe(true)
+  })
+
+  it('keeps the existing provider choice on Windows Chrome', async () => {
+    expect(await detectStandardWasmRuntime(windowsChromeIdentity, false)).toBe(false)
   })
 })
