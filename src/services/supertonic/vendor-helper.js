@@ -6,10 +6,14 @@ const ort = useStandardWasmRuntime()
     ? await import('onnxruntime-web')
     : await import('onnxruntime-web/webgpu');
 
-// Piper and Supertonic share ONNX Runtime's global environment. Keep both
-// runtimes on the PWA's versioned, offline-cached assets instead of allowing a
-// previous engine to leave ONNX pointing at an incomplete or remote path.
-ort.env.wasm.wasmPaths = '/onnx/';
+// A custom wasmPaths prefix makes ONNX Runtime dynamically import a separate
+// .mjs module. On iPad Safari that import can fail even when Vercel serves the
+// file correctly. The standard WASM bundle embeds its module and Vite emits
+// its matching .wasm asset into the PWA precache. Piper may have set this
+// shared option earlier, so reset it immediately before each Supertonic load.
+function configureWasmAssets() {
+    ort.env.wasm.wasmPaths = useStandardWasmRuntime() ? undefined : '/onnx/';
+}
 
 async function cachedFetch(url) {
     const cached = 'caches' in globalThis ? await caches.match(url) : null;
@@ -447,7 +451,9 @@ export async function loadTextProcessor(onnxDir) {
 export async function loadOnnx(onnxPath, options) {
     const response = await cachedFetch(onnxPath);
     if (!response.ok) throw new Error(`Unable to load model: ${onnxPath}`);
-    const session = await ort.InferenceSession.create(await response.arrayBuffer(), options);
+    const model = await response.arrayBuffer();
+    configureWasmAssets();
+    const session = await ort.InferenceSession.create(model, options);
     return session;
 }
 
