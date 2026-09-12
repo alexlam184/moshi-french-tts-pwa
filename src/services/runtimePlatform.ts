@@ -8,8 +8,27 @@ export function isSafariBrowser(userAgent: string) {
     && !/CriOS|Chrome|Chromium|Edg|FxiOS|Firefox|OPR|OPiOS/i.test(userAgent)
 }
 
-export function useStandardWasmRuntime() {
-  if (typeof navigator === 'undefined') return false
-  return isAppleTouchDevice(navigator.userAgent, navigator.platform, navigator.maxTouchPoints)
-    || isSafariBrowser(navigator.userAgent)
+type BrowserIdentity = {
+  userAgent: string
+  platform: string
+  maxTouchPoints: number
+  brave?: { isBrave?: () => Promise<boolean> }
+  userAgentData?: { brands?: readonly { brand: string }[] }
+}
+
+export async function detectStandardWasmRuntime(browser: BrowserIdentity, standalone: boolean) {
+  if (isAppleTouchDevice(browser.userAgent, browser.platform, browser.maxTouchPoints)
+    || isSafariBrowser(browser.userAgent)) return true
+
+  const isMac = /Macintosh/i.test(browser.userAgent) || browser.platform === 'MacIntel'
+  if (isMac && /Chrome\/\d/i.test(browser.userAgent) && !/Edg\/|OPR\//i.test(browser.userAgent)) return true
+
+  if (browser.userAgentData?.brands?.some(item => item.brand === 'Brave')) return true
+
+  try {
+    if (await browser.brave?.isBrave?.()) return true
+  } catch { /* Brave detection can be unavailable in an installed app */ }
+
+  // A Mac standalone app is a conservative fallback when browser identity is hidden.
+  return standalone && isMac
 }

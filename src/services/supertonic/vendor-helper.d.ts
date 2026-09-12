@@ -1,4 +1,5 @@
 export type SupertonicStyle = { ttl: unknown; dp: unknown }
+export const standardWasmRuntime: boolean
 export type SupertonicTts = {
   sampleRate: number
   call(text: string, lang: string, style: SupertonicStyle, totalStep: number, speed?: number, silenceDuration?: number, progressCallback?: (step: number, total: number) => void): Promise<{ wav: number[]; duration: number[] }>

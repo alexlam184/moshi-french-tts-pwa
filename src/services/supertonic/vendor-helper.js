@@ -1,8 +1,10 @@
-import { useStandardWasmRuntime } from '../runtimePlatform';
+import { detectStandardWasmRuntime } from '../runtimePlatform';
 
-// Safari has a known JSEP/WebGPU runtime memory issue on Apple devices.
-// Import the standard WASM build there, not the WebGPU build with a WASM EP.
-const ort = useStandardWasmRuntime()
+// Use the standard WASM build in Safari, Brave, and Mac Chrome, including
+// standalone apps where the browser may hide its identity.
+const standalone = typeof matchMedia === 'function' && matchMedia('(display-mode: standalone)').matches;
+export const standardWasmRuntime = await detectStandardWasmRuntime(navigator, standalone);
+const ort = standardWasmRuntime
     ? await import('onnxruntime-web')
     : await import('onnxruntime-web/webgpu');
 
@@ -12,7 +14,7 @@ const ort = useStandardWasmRuntime()
 // its matching .wasm asset into the PWA precache. Piper may have set this
 // shared option earlier, so reset it immediately before each Supertonic load.
 function configureWasmAssets() {
-    ort.env.wasm.wasmPaths = useStandardWasmRuntime() ? undefined : '/onnx/';
+    ort.env.wasm.wasmPaths = standardWasmRuntime ? undefined : '/onnx/';
 }
 
 async function cachedFetch(url) {
