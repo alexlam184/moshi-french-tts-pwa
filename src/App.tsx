@@ -8,6 +8,7 @@ import { Icon } from './components/Icons'
 import { BrowserSpeechEngine } from './services/speech'
 import { PiperSpeechEngine, SupertonicSpeechEngine, type SpeechEvents } from './services/localSpeech'
 import { installedModels, voicesForEngine, type EngineId } from './services/models'
+import { frenchIpa } from './services/ipa'
 
 type Playback = { sentence: number | null; word: number; paused: boolean; hovering: number | null }
 type StatusKind = 'ready' | 'empty' | 'restored' | 'cards' | 'preparing' | 'sentence' | 'word' | 'repeating' | 'continuing' | 'paused' | 'finished' | 'stopped'
@@ -43,6 +44,7 @@ export default function App() {
   const [recentTexts, setRecentTexts] = useState(savedRecentTexts)
   const sentences = useMemo(() => splitIntoSentences(text), [text])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [ipaByText, setIpaByText] = useState<Record<string, string>>({})
   const [engine, setEngine] = useState<EngineId>('system')
   const [voice, setVoice] = useState('')
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
@@ -78,6 +80,17 @@ export default function App() {
   }, [])
 
   useEffect(() => { installedModels().then(setInstalled) }, [])
+  useEffect(() => {
+    let cancelled = false
+    for (const sentence of sentences) {
+      if (!expanded.has(sentence.id) || ipaByText[sentence.text]) continue
+      frenchIpa(sentence.text).then(
+        ipa => { if (!cancelled) setIpaByText(current => ({ ...current, [sentence.text]: ipa })) },
+        error => { if (!cancelled) setIpaByText(current => ({ ...current, [sentence.text]: `IPA unavailable: ${error instanceof Error ? error.message : String(error)}` })) },
+      )
+    }
+    return () => { cancelled = true }
+  }, [sentences, expanded, ipaByText])
   useEffect(() => {
     const dialog = document.getElementById('history-dialog') as HTMLDialogElement | null
     if (historyOpen && dialog && !dialog.open) {
@@ -382,7 +395,7 @@ export default function App() {
         </div>
 
         <div className="sentences">
-          {sentences.length ? sentences.map((sentence, index) => <SentenceRow key={sentence.id} sentence={sentence} expanded={expanded.has(sentence.id)} active={playback.sentence === index} paused={playback.paused} activeWord={playback.sentence === index ? playback.word : -1} hoveredWord={playback.sentence === index ? playback.hovering : null} audioStatus={sentenceAudioStatus(index)} onToggle={() => setExpanded(current => { const next = new Set(current); next.has(sentence.id) ? next.delete(sentence.id) : next.add(sentence.id); return next })} onPlay={() => toggleSentence(index)} onWordClick={i => delayedWord(index, i)} onWordDoubleClick={i => startFromWord(index, i)} onWordEnter={i => hoverWord(index, i)} onWordLeave={leaveWord} />) : <div className="empty-state"><Icon name="speaker"/><p>add some french text to begin.</p></div>}
+          {sentences.length ? sentences.map((sentence, index) => <SentenceRow key={sentence.id} sentence={sentence} expanded={expanded.has(sentence.id)} active={playback.sentence === index} paused={playback.paused} activeWord={playback.sentence === index ? playback.word : -1} hoveredWord={playback.sentence === index ? playback.hovering : null} audioStatus={sentenceAudioStatus(index)} ipa={ipaByText[sentence.text] ?? 'Preparing pronunciation…'} onToggle={() => setExpanded(current => { const next = new Set(current); next.has(sentence.id) ? next.delete(sentence.id) : next.add(sentence.id); return next })} onPlay={() => toggleSentence(index)} onWordClick={i => delayedWord(index, i)} onWordDoubleClick={i => startFromWord(index, i)} onWordEnter={i => hoverWord(index, i)} onWordLeave={leaveWord} />) : <div className="empty-state"><Icon name="speaker"/><p>add some french text to begin.</p></div>}
         </div>
       </section>
     </main>}

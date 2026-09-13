@@ -4,6 +4,12 @@ A local-first, installable French listening-practice PWA. It uses the browser's 
 
 Use the in-app **Guide** button for a short walkthrough of text preparation, playlists, word practice, voices, and playback statuses.
 
+## French IPA
+
+Expand any sentence row to see its IPA pronunciation. The app generates IPA for arbitrary French text on demand in a background worker, using the French eSpeak phonemizer already bundled for Piper. No Piper voice model, account, or online API is required. The phonemizer's WASM and data assets are included in the offline PWA cache after the first complete visit. IPA is a rule-based estimate and may differ from the pronunciation of the selected TTS voice, especially for names and context-dependent liaisons. The separate English-translation placeholder is unchanged.
+
+The [Wiktionary pronunciation app](https://github.com/hellpanderrr/hellpanderrr.github.io/tree/main/wiktionary_pron) inspired this feature, but its GPL-licensed Lua code is not copied into this project.
+
 ## Run locally
 
 ```bash
