@@ -3,7 +3,7 @@ import { Icon } from './Icons'
 
 type Props = {
   sentence: Sentence; expanded: boolean; active: boolean; paused: boolean; activeWord: number; hoveredWord: number | null
-  audioStatus: string
+  audioStatus: string; ipa: string
   onToggle: () => void; onPlay: () => void; onWordClick: (i: number) => void; onWordDoubleClick: (i: number) => void; onWordEnter: (i: number) => void; onWordLeave: () => void
 }
 
@@ -21,6 +21,6 @@ export function SentenceRow(props: Props) {
         <button className="play-button" onClick={props.onPlay} aria-label={`${active ? paused ? 'Resume' : 'Pause' : 'Play'} sentence`}><Icon name={active && !paused ? 'pause' : 'play'}/><span>{active ? paused ? 'Resume' : 'Pause' : 'Play'}</span></button>
       </div>
     </div>
-    {expanded && <div className="sentence__details"><div><span>IPA</span><p lang="fr-fonipa">{sentence.ipa}</p></div><div><span>ENGLISH</span><p>{sentence.translation}</p></div></div>}
+    {expanded && <div className="sentence__details"><div><span>IPA · FRENCH (FRANCE)</span><p lang="fr-fonipa" aria-live="polite">{props.ipa}</p></div><div><span>ENGLISH</span><p>{sentence.translation}</p></div></div>}
   </article>
 }

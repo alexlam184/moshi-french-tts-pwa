@@ -13,6 +13,7 @@ export function GuidePage({ onBack }: { onBack: () => void }) {
       <ol className="guide-steps">
         <li><b>Paste French text</b><span>Write or paste a short passage into the editor.</span></li>
         <li><b>Prepare listening</b><span>The app separates it into clean sentence rows.</span></li>
+        <li><b>Open a sentence</b><span>See French IPA generated on your device using the app’s Piper/eSpeak phonemizer. It works for your own text without installing a voice model. The estimate may differ from the selected voice.</span></li>
         <li><b>Play all sentences</b><span>The large blue button plays the complete passage in order.</span></li>
       </ol>
     </section>
