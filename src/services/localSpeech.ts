@@ -1,9 +1,13 @@
 import { TtsSession } from '@mintplex-labs/piper-tts-web'
 import { loadTextToSpeech, loadVoiceStyle, standardWasmRuntime, writeWavFile, type SupertonicStyle, type SupertonicTts } from './supertonic/vendor-helper.js'
 import { SUPERTONIC_BASE_URL } from './models'
-import { MemoryAudioCache } from './audioCache'
+import { AUDIO_CACHE_LIMIT_BYTES, MemoryAudioCache } from './audioCache'
 
 const sessionAudioCache = new MemoryAudioCache()
+
+export { AUDIO_CACHE_LIMIT_BYTES }
+export const subscribeSessionAudioCache = sessionAudioCache.subscribe
+export const getSessionAudioCacheBytes = () => sessionAudioCache.sizeBytes
 
 export type SpeechEvents = {
   onWord?: (index: number) => void
@@ -40,7 +44,10 @@ class AudioPlayback {
     this.unlock()
     const context = this.context
     if (!context) throw new Error('Audio playback is unavailable in this browser')
-    this.buffer = await context.decodeAudioData(await blob.arrayBuffer())
+    const generation = this.generation
+    const buffer = await context.decodeAudioData(await blob.arrayBuffer())
+    if (!this.isCurrent(generation)) return
+    this.buffer = buffer
     this.rate = rate
     this.wordCount = wordCount
     this.events = events

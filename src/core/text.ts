@@ -12,9 +12,11 @@ export const SAMPLE_TEXT = Object.keys(SAMPLE_TRANSLATIONS).join(' ')
 export function splitIntoSentences(input: string): Sentence[] {
   const text = input.trim()
   if (!text) return []
-  const parts = text.match(/[^.!?…]+[.!?…]+[”»]?|[^.!?…]+$/g) ?? [text]
-  return parts.map((part, index) => {
-    const clean = part.trim()
+  const parts = text.split(/\r\n|\r|\n/)
+    .flatMap(line => line.trim().match(/[^.!?…]+[.!?…]+[”»]?|[^.!?…]+$/g) ?? [])
+    .map(part => part.trim())
+    .filter(Boolean)
+  return parts.map((clean, index) => {
     return {
       id: `${index}-${clean.slice(0, 16)}`,
       text: clean,
