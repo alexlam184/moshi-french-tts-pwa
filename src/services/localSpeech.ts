@@ -167,14 +167,15 @@ export class PiperSpeechEngine {
 }
 
 export class SupertonicSpeechEngine {
+  private inferenceQueue: Promise<unknown> = Promise.resolve()
   private playback = new AudioPlayback()
   private tts: SupertonicTts | null = null
   private loadPromise: Promise<SupertonicTts> | null = null
   private styles = new Map<string, SupertonicStyle>()
   private cache = sessionAudioCache
 
-  private cacheKey(words: string[], rate: number, voice: string) {
-    return JSON.stringify(['supertonic', voice, rate, words.join(' ')])
+  private cacheKey(words: string[], rate: number, voice: string, steps: 4 | 8) {
+    return JSON.stringify(['supertonic', voice, rate, steps, words.join(' ')])
   }
 
   private load() {
@@ -199,19 +200,28 @@ export class SupertonicSpeechEngine {
     return style
   }
 
-  async speak(words: string[], options: { rate: number; voice?: string }, events: SpeechEvents = {}) {
+  async speak(words: string[], options: { rate: number; voice?: string; steps?: 4 | 8 }, events: SpeechEvents = {}) {
     const generation = this.playback.nextGeneration()
     this.playback.unlock()
     try {
       const selectedVoice = options.voice ?? 'F1'
-      const key = this.cacheKey(words, options.rate, selectedVoice)
+      const steps = options.steps ?? 8
+      const key = this.cacheKey(words, options.rate, selectedVoice, steps)
       const cached = this.cache.get(key)
       if (cached) {
         await this.playback.play(cached, words.length, 1, events)
         return
       }
       const [tts, style] = await Promise.all([this.load(), this.style(selectedVoice)])
-      const result = await tts.call(words.join(' '), 'fr', style, 8, options.rate, 0.15)
+      const checkCurrent = () => {
+        if (!this.playback.isCurrent(generation)) throw new Error('Speech generation cancelled')
+      }
+      const inference = this.inferenceQueue.then(async () => {
+        checkCurrent()
+        return tts.call(words.join(' '), 'fr', style, steps, options.rate, 0.15, checkCurrent)
+      })
+      this.inferenceQueue = inference.catch(() => undefined)
+      const result = await inference
       if (!this.playback.isCurrent(generation)) return
       const length = Math.floor(tts.sampleRate * result.duration[0])
       const wav = writeWavFile(result.wav.slice(0, length), tts.sampleRate)
@@ -221,7 +231,7 @@ export class SupertonicSpeechEngine {
     } catch (error) { if (this.playback.isCurrent(generation)) events.onError?.(error) }
   }
 
-  hasCached(words: string[], options: { rate: number; voice?: string }) { return this.cache.has(this.cacheKey(words, options.rate, options.voice ?? 'F1')) }
+  hasCached(words: string[], options: { rate: number; voice?: string; steps?: 4 | 8 }) { return this.cache.has(this.cacheKey(words, options.rate, options.voice ?? 'F1', options.steps ?? 8)) }
   clearCache() { this.cache.clear() }
 
   pause() { this.playback.pause() }

@@ -69,6 +69,10 @@ textarea:focus-visible, select:focus-visible { outline-color: var(--color-focus)
 .listener { background: var(--color-paper-2); padding-block: var(--space-lg); }
 .listener__header { display: flex; flex-direction: column; gap: var(--space-xs); margin-block-end: var(--space-sm); }
 .listener__header .eyebrow { margin-block-end: var(--space-2xs); }
+.listener__header { flex-wrap: wrap; }
+.listener__settings { display: grid; gap: var(--space-2xs); min-width: 0; }
+.quality-control { display: flex; align-items: center; gap: var(--space-xs); color: var(--color-muted); font: 500 var(--text-xs)/1.3 var(--font-label); }
+.quality-control select { width: auto; min-height: 40px; font-size: var(--text-sm); text-transform: none; }
 .cache-usage { margin: 0; color: var(--color-muted); font: 400 var(--text-xs)/1.3 var(--font-label); white-space: nowrap; }
 .cache-usage strong { color: var(--color-ink-2); font-weight: 600; }
 .listener h2 { font-size: clamp(1.5rem, 2.3vw, 2rem); line-height: 1.05; }
