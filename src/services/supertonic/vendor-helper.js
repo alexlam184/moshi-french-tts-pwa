@@ -1,20 +1,30 @@
-import { detectStandardWasmRuntime } from '../runtimePlatform';
+import { detectStandardWasmRuntime, isAppleTouchDevice, isSafariBrowser } from '../runtimePlatform';
 
 // Use the standard WASM build in Safari, Brave, and Mac Chrome, including
 // standalone apps where the browser may hide its identity.
 const standalone = typeof matchMedia === 'function' && matchMedia('(display-mode: standalone)').matches;
 export const standardWasmRuntime = await detectStandardWasmRuntime(navigator, standalone);
 const ort = standardWasmRuntime
-    ? await import('onnxruntime-web')
+    ? await import('onnxruntime-web/wasm')
     : await import('onnxruntime-web/webgpu');
 
-// A custom wasmPaths prefix makes ONNX Runtime dynamically import a separate
-// .mjs module. On Safari that import can fail even when Vercel serves the
-// file correctly. The standard WASM bundle embeds its module and Vite emits
-// its matching .wasm asset into the PWA precache. Piper may have set this
-// shared option earlier, so reset it immediately before each Supertonic load.
+// CPU fallback can use multiple cores on isolated desktop Chromium pages.
+// Set this before the first session (Piper can share this runtime).
+ort.env.wasm.numThreads = globalThis.crossOriginIsolated
+    && !isAppleTouchDevice(navigator.userAgent, navigator.platform, navigator.maxTouchPoints)
+    && !isSafariBrowser(navigator.userAgent)
+    ? Math.max(1, Math.min(4, Math.floor((navigator.hardwareConcurrency || 2) / 2))) : 1;
+
+// Override only the binary so the runtime keeps its embedded JS module.
+// A directory prefix forces a separate module import; inferred binary paths
+// can resolve to the app's HTML fallback after bundling or in a worker.
+// These matching binaries are copied from the installed runtime into /onnx.
 function configureWasmAssets() {
-    ort.env.wasm.wasmPaths = standardWasmRuntime ? undefined : '/onnx/';
+    ort.env.wasm.wasmPaths = {
+        wasm: new URL(standardWasmRuntime
+            ? '/onnx/ort-wasm-simd-threaded.wasm'
+            : '/onnx/ort-wasm-simd-threaded.asyncify.wasm', globalThis.location.href).href
+    };
 }
 
 async function cachedFetch(url) {
@@ -182,6 +192,15 @@ export class TextToSpeech {
     }
 
     async _infer(textList, langList, style, totalStep, speed = 1.05, progressCallback = null) {
+        const owned = new Set();
+        const own = tensor => { owned.add(tensor); return tensor; };
+        const release = tensor => { owned.delete(tensor); tensor.dispose(); };
+        const run = async (session, feeds) => {
+            const outputs = await session.run(feeds);
+            Object.values(outputs).forEach(own);
+            return outputs;
+        };
+        try {
         const bsz = textList.length;
         
         // Process text
@@ -189,14 +208,14 @@ export class TextToSpeech {
         
         const textIdsFlat = new BigInt64Array(textIds.flat().map(x => BigInt(x)));
         const textIdsShape = [bsz, textIds[0].length];
-        const textIdsTensor = new ort.Tensor('int64', textIdsFlat, textIdsShape);
+        const textIdsTensor = own(new ort.Tensor('int64', textIdsFlat, textIdsShape));
         
         const textMaskFlat = new Float32Array(textMask.flat(2));
         const textMaskShape = [bsz, 1, textMask[0][0].length];
-        const textMaskTensor = new ort.Tensor('float32', textMaskFlat, textMaskShape);
+        const textMaskTensor = own(new ort.Tensor('float32', textMaskFlat, textMaskShape));
         
         // Predict duration
-        const dpOutputs = await this.dpOrt.run({
+        const dpOutputs = await run(this.dpOrt, {
             text_ids: textIdsTensor,
             style_dp: style.dp,
             text_mask: textMaskTensor
@@ -209,7 +228,7 @@ export class TextToSpeech {
         }
         
         // Encode text
-        const textEncOutputs = await this.textEncOrt.run({
+        const textEncOutputs = await run(this.textEncOrt, {
             text_ids: textIdsTensor,
             style_ttl: style.ttl,
             text_mask: textMaskTensor
@@ -227,11 +246,12 @@ export class TextToSpeech {
         
         const latentMaskFlat = new Float32Array(latentMask.flat(2));
         const latentMaskShape = [bsz, 1, latentMask[0][0].length];
-        const latentMaskTensor = new ort.Tensor('float32', latentMaskFlat, latentMaskShape);
+        const latentMaskTensor = own(new ort.Tensor('float32', latentMaskFlat, latentMaskShape));
         
         // Prepare constant arrays
         const totalStepArray = new Float32Array(bsz).fill(totalStep);
-        const totalStepTensor = new ort.Tensor('float32', totalStepArray, [bsz]);
+        const totalStepTensor = own(new ort.Tensor('float32', totalStepArray, [bsz]));
+        let latentTensor = own(new ort.Tensor('float32', new Float32Array(xt.flat(2)), [bsz, xt[0].length, xt[0][0].length]));
         
         // Denoising loop
         for (let step = 0; step < totalStep; step++) {
@@ -240,14 +260,10 @@ export class TextToSpeech {
             }
             
             const currentStepArray = new Float32Array(bsz).fill(step);
-            const currentStepTensor = new ort.Tensor('float32', currentStepArray, [bsz]);
+            const currentStepTensor = own(new ort.Tensor('float32', currentStepArray, [bsz]));
             
-            const xtFlat = new Float32Array(xt.flat(2));
-            const xtShape = [bsz, xt[0].length, xt[0][0].length];
-            const xtTensor = new ort.Tensor('float32', xtFlat, xtShape);
-            
-            const vectorEstOutputs = await this.vectorEstOrt.run({
-                noisy_latent: xtTensor,
+            const vectorEstOutputs = await run(this.vectorEstOrt, {
+                noisy_latent: latentTensor,
                 text_emb: textEmb,
                 style_ttl: style.ttl,
                 latent_mask: latentMaskTensor,
@@ -256,38 +272,25 @@ export class TextToSpeech {
                 total_step: totalStepTensor
             });
             
-            const denoised = Array.from(vectorEstOutputs.denoised_latent.data);
-            
-            // Reshape to 3D
-            const latentDim = xt[0].length;
-            const latentLen = xt[0][0].length;
-            xt = [];
-            let idx = 0;
-            for (let b = 0; b < bsz; b++) {
-                const batch = [];
-                for (let d = 0; d < latentDim; d++) {
-                    const row = [];
-                    for (let t = 0; t < latentLen; t++) {
-                        row.push(denoised[idx++]);
-                    }
-                    batch.push(row);
-                }
-                xt.push(batch);
-            }
+            // Feed the output tensor directly into the next step, avoiding
+            // repeated nested-array allocation and copying of every sample.
+            release(latentTensor);
+            release(currentStepTensor);
+            latentTensor = vectorEstOutputs.denoised_latent;
         }
         
         // Generate waveform
-        const finalXtFlat = new Float32Array(xt.flat(2));
-        const finalXtShape = [bsz, xt[0].length, xt[0][0].length];
-        const finalXtTensor = new ort.Tensor('float32', finalXtFlat, finalXtShape);
-        
-        const vocoderOutputs = await this.vocoderOrt.run({
-            latent: finalXtTensor
+        const vocoderOutputs = await run(this.vocoderOrt, {
+            latent: latentTensor
         });
         
         const wav = Array.from(vocoderOutputs.wav_tts.data);
         
         return { wav, duration };
+        } finally {
+            // Voice-style tensors belong to the reusable style cache.
+            for (const tensor of owned) tensor.dispose();
+        }
     }
 
     async call(text, lang, style, totalStep, speed = 1.05, silenceDuration = 0.3, progressCallback = null) {

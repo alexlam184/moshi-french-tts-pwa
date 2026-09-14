@@ -52,6 +52,7 @@ export default function App() {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [installed, setInstalled] = useState<string[]>([])
   const [rate, setRate] = useState(0.85)
+  const [supertonicSteps, setSupertonicSteps] = useState<4 | 8>(8)
   const [playback, setPlayback] = useState<Playback>(EMPTY_PLAYBACK)
   const [failedSentence, setFailedSentence] = useState<number | null>(null)
   const [modelsOpen, setModelsOpen] = useState(false)
@@ -193,7 +194,7 @@ export default function App() {
 
   function speakWithSelectedEngine(words: string[], events: SpeechEvents) {
     if (engine === 'piper') return piperSpeech.current.speak(words, { rate }, events)
-    if (engine === 'supertonic') return supertonicSpeech.current.speak(words, { rate, voice }, events)
+    if (engine === 'supertonic') return supertonicSpeech.current.speak(words, { rate, voice, steps: supertonicSteps }, events)
     speech.current.speak(words, { rate, voice }, events)
   }
 
@@ -225,6 +226,14 @@ export default function App() {
     playlist.current = false
     stopEngines(); clearAudioCaches(); setPlayback(EMPTY_PLAYBACK); setFailedSentence(null); setVoice(next)
     setStatus({ kind: 'ready', title: 'Ready', detail: `${next} voice selected.` })
+  }
+
+  function changeSupertonicSteps(next: 4 | 8) {
+    if (next === supertonicSteps) return
+    playlist.current = false
+    stopEngines(); clearAudioCaches(); setPlayback(EMPTY_PLAYBACK); setFailedSentence(null)
+    setSupertonicSteps(next)
+    setStatus({ kind: 'ready', title: 'Ready', detail: `Supertonic: ${next} steps · ${next === 4 ? 'Fast' : 'High quality'}. New audio will use this setting.` })
   }
 
   function changeRate(next: number) {
@@ -360,7 +369,7 @@ export default function App() {
     const words = sentences[index]?.words
     if (!words) return false
     if (engine === 'piper') return piperSpeech.current.hasCached(words, { rate })
-    if (engine === 'supertonic') return supertonicSpeech.current.hasCached(words, { rate, voice })
+    if (engine === 'supertonic') return supertonicSpeech.current.hasCached(words, { rate, voice, steps: supertonicSteps })
     return false
   }
   const sentenceAudioStatus = (index: number) => {
@@ -397,7 +406,13 @@ export default function App() {
       </section>
 
       <section className="listener" aria-labelledby="listener-heading">
-        <header className="listener__header"><div><p className="eyebrow">02 · LISTEN</p><h2 id="listener-heading">Sentence Practice</h2></div><p className="cache-usage" title="Temporary generated audio only. Downloaded voice models are not included."><span>Memory cached:</span> <strong>{formatCacheMegabytes(cachedAudioBytes)} MB / {formatCacheMegabytes(AUDIO_CACHE_LIMIT_BYTES)} MB</strong></p></header>
+        <header className="listener__header">
+          <div><p className="eyebrow">02 · LISTEN</p><h2 id="listener-heading">Sentence Practice</h2></div>
+          <div className="listener__settings">
+            {engine === 'supertonic' && <label className="quality-control">AI quality<select aria-label="Supertonic AI quality" value={supertonicSteps} onChange={e => changeSupertonicSteps(Number(e.target.value) === 4 ? 4 : 8)}><option value={4}>4 steps · Fast</option><option value={8}>8 steps · High quality</option></select></label>}
+            <p className="cache-usage" title="Temporary generated audio only. Downloaded voice models are not included."><span>Memory cached:</span> <strong>{formatCacheMegabytes(cachedAudioBytes)} MB / {formatCacheMegabytes(AUDIO_CACHE_LIMIT_BYTES)} MB</strong></p>
+          </div>
+        </header>
 
         <div className="playback-toolbar">
           <div className="voice-controls">

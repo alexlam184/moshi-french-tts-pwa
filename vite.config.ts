@@ -3,7 +3,14 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
 
+const isolationHeaders = {
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Embedder-Policy': 'require-corp',
+}
+
 export default defineConfig({
+  server: { headers: isolationHeaders },
+  preview: { headers: isolationHeaders },
   plugins: [
     react(),
     viteStaticCopy({
