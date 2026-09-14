@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { SAMPLE_TEXT, splitIntoSentences } from './core/text'
 import { isIPad } from './core/platform'
 import { SentenceRow } from './components/SentenceRow'
@@ -6,9 +6,9 @@ import { GuidePage } from './components/GuidePage'
 import { ModelManager } from './components/ModelManager'
 import { Icon } from './components/Icons'
 import { BrowserSpeechEngine } from './services/speech'
-import { PiperSpeechEngine, SupertonicSpeechEngine, type SpeechEvents } from './services/localSpeech'
+import { AUDIO_CACHE_LIMIT_BYTES, getSessionAudioCacheBytes, PiperSpeechEngine, subscribeSessionAudioCache, SupertonicSpeechEngine, type SpeechEvents } from './services/localSpeech'
 import { installedModels, voicesForEngine, type EngineId } from './services/models'
-import { frenchIpa } from './services/ipa'
+import { clearFrenchIpaCache, frenchIpa } from './services/ipa'
 
 type Playback = { sentence: number | null; word: number; paused: boolean; hovering: number | null }
 type StatusKind = 'ready' | 'empty' | 'restored' | 'cards' | 'preparing' | 'sentence' | 'word' | 'repeating' | 'continuing' | 'paused' | 'finished' | 'stopped'
@@ -17,6 +17,8 @@ const EMPTY_PLAYBACK: Playback = { sentence: null, word: -1, paused: false, hove
 const SAVED_TEXT_KEY = 'moshi-french-tts-pwa-last-text'
 const RECENT_TEXTS_KEY = 'moshi-french-tts-pwa-recent-texts'
 const RECENT_TEXT_LIMIT = 20
+const MEBIBYTE = 1024 * 1024
+const formatCacheMegabytes = (bytes: number) => new Intl.NumberFormat('en', { maximumFractionDigits: 1 }).format(bytes / MEBIBYTE)
 
 function savedText() {
   return window.localStorage.getItem(SAVED_TEXT_KEY)?.trim() || SAMPLE_TEXT
@@ -58,12 +60,14 @@ export default function App() {
   const [status, setStatus] = useState<AppStatus>(() => window.localStorage.getItem(SAVED_TEXT_KEY)
     ? { kind: 'restored', title: 'Text restored', detail: 'Your last prepared text was returned to the editor.' }
     : readyStatus())
+  const cachedAudioBytes = useSyncExternalStore(subscribeSessionAudioCache, getSessionAudioCacheBytes)
   const speech = useRef(new BrowserSpeechEngine())
   const piperSpeech = useRef(new PiperSpeechEngine())
   const supertonicSpeech = useRef(new SupertonicSpeechEngine())
   const playlist = useRef(false)
   const hoverTimer = useRef<number | null>(null)
   const clickTimer = useRef<number | null>(null)
+  const ipaGeneration = useRef(0)
   const engineVoices = useMemo(() => voicesForEngine(engine, voices), [engine, voices])
 
   useEffect(() => {
@@ -82,11 +86,12 @@ export default function App() {
   useEffect(() => { installedModels().then(setInstalled) }, [])
   useEffect(() => {
     let cancelled = false
+    const generation = ipaGeneration.current
     for (const sentence of sentences) {
       if (!expanded.has(sentence.id) || ipaByText[sentence.text]) continue
       frenchIpa(sentence.text).then(
-        ipa => { if (!cancelled) setIpaByText(current => ({ ...current, [sentence.text]: ipa })) },
-        error => { if (!cancelled) setIpaByText(current => ({ ...current, [sentence.text]: `IPA unavailable: ${error instanceof Error ? error.message : String(error)}` })) },
+        ipa => { if (!cancelled && generation === ipaGeneration.current) setIpaByText(current => ({ ...current, [sentence.text]: ipa })) },
+        error => { if (!cancelled && generation === ipaGeneration.current) setIpaByText(current => ({ ...current, [sentence.text]: `IPA unavailable: ${error instanceof Error ? error.message : String(error)}` })) },
       )
     }
     return () => { cancelled = true }
@@ -135,6 +140,26 @@ export default function App() {
       return next
     })
     setStatus({ kind: 'cards', title: 'Sentence cards ready', detail: `${prepared.length} total · ${different} different.` })
+  }
+
+  function clearForm() {
+    if (textLocked) return
+    setDraft('')
+    setStatus({ kind: 'ready', title: 'Ready', detail: 'Text editor cleared. Prepared sentences remain until you prepare new text.' })
+    window.requestAnimationFrame(() => document.getElementById('french-text')?.focus())
+  }
+
+  function clearCaches() {
+    playlist.current = false
+    stopEngines()
+    clearAudioCaches()
+    ipaGeneration.current += 1
+    clearFrenchIpaCache()
+    setIpaByText({})
+    setExpanded(new Set())
+    setPlayback(EMPTY_PLAYBACK)
+    setFailedSentence(null)
+    setStatus({ kind: 'ready', title: 'Ready', detail: 'Temporary TTS audio and IPA cleared. Voice models remain installed.' })
   }
 
   function restoreRecentText(value: string) {
@@ -363,13 +388,16 @@ export default function App() {
         <header className="section-heading"><p className="eyebrow">01 · TEXT</p><h1 id="composer-heading">What would you like to <em>hear</em>?</h1><p>Paste french text. it stays on this device.</p></header>
         <label className="field-label" htmlFor="french-text">French Text</label>
         <textarea id="french-text" value={draft} onChange={e => setDraft(e.target.value)} readOnly={textLocked} spellCheck lang="fr" aria-describedby="text-help" aria-label={textLocked ? 'French text—editing locked during playback' : 'French text'} />
-        <div id="text-help" className="field-help"><span>{draft.length.toLocaleString()} characters</span><span>Split automatically at punctuation</span></div>
-        <button className="button button--primary prepare" onClick={applyText}><Icon name="speaker"/> Prepare listening</button>
-        <aside className="privacy-note"><span aria-hidden="true">◎</span><div><strong>Local by default</strong><p>browser voices and installed models process text without sending it to a speech server.</p></div></aside>
+        <div id="text-help" className="field-help"><span>{draft.length.toLocaleString()} characters</span><span>Split at punctuation or line breaks</span></div>
+        <div className="composer-actions">
+          <button className="button button--primary prepare" onClick={applyText}><Icon name="speaker"/> Prepare listening</button>
+          <button className="button" onClick={clearForm} disabled={textLocked}>Clear Form</button>
+          <button className="button" onClick={clearCaches}>Clear cache</button>
+        </div>
       </section>
 
       <section className="listener" aria-labelledby="listener-heading">
-        <header className="listener__header"><div><p className="eyebrow">02 · LISTEN</p><h2 id="listener-heading">Sentence Practice</h2></div></header>
+        <header className="listener__header"><div><p className="eyebrow">02 · LISTEN</p><h2 id="listener-heading">Sentence Practice</h2></div><p className="cache-usage" title="Temporary generated audio only. Downloaded voice models are not included."><span>Memory cached:</span> <strong>{formatCacheMegabytes(cachedAudioBytes)} MB / {formatCacheMegabytes(AUDIO_CACHE_LIMIT_BYTES)} MB</strong></p></header>
 
         <div className="playback-toolbar">
           <div className="voice-controls">

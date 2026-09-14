@@ -41,9 +41,17 @@ export function frenchIpa(text: string): Promise<string> {
       reject(error)
     }
   }).catch((error: unknown) => {
-    cache.delete(clean)
+    if (cache.get(clean) === promise) cache.delete(clean)
     throw error
   })
   cache.set(clean, promise)
   return promise
+}
+
+export function clearFrenchIpaCache() {
+  worker?.terminate()
+  worker = null
+  cache.clear()
+  for (const request of pending.values()) request.reject(new Error('IPA cache cleared'))
+  pending.clear()
 }
